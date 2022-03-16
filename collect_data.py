@@ -28,10 +28,12 @@ collection_items = []
 for i in range(1, no_pages + 1):
     query = {'page': i, 'per_page': 100}
     url_request = url_discogs_api + "/users/" + config["discogs_user"] + "/collection/folders/0/releases"
+    print(requests.get(url_request, params=query))
     response = requests.get(url_request, params=query)
+    print(jsonResponse["releases"])
     collection_items.append(jsonResponse["releases"])
 
-print(collection_items)
+print(len(collection_items))
 
 # Read sqlite query results into a pandas DataFrame
 #con = sqlite3.connect("~/Development/Datasets/discogs_value.sqlite")
