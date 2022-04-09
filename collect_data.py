@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 import numpy as np
 import pandas as pd
@@ -7,45 +8,86 @@ import yaml
 from requests.exceptions import HTTPError
 import time
 
-with open(r'config.yaml') as file:
-    config = yaml.load(file, Loader=yaml.FullLoader)
+def main():
 
-url_discogs_api = "https://api.discogs.com"
+    with open(r'config.yaml') as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
 
-try:
-    query = {'page': 1, 'per_page': 100}
-    url_request = url_discogs_api + "/users/" + config["discogs_user"] + "/collection/folders/0/releases"
-    response = requests.get(url_request, params=query)
-    response.raise_for_status()
-    # access JSOn content
-    jsonResponse = response.json()
-except HTTPError as http_err:
-    print(f'HTTP error occurred: {http_err}')
-except Exception as err:
-    print(f'Other error occurred: {err}')
+    url_discogs_api = "https://api.discogs.com"
+    name_discogs_user = config["discogs_user"]
+    db_file = config["db_file"]
+    df_collection = retrieve_collection_items(name_discogs_user, url_discogs_api)
+    store_collection_items(df_collection, db_file)
+    df_collection_value = retrieve_lowest_value(df_collection, url_discogs_api)
+    store_lowest_value(df_collection_value, db_file)
 
-no_pages = jsonResponse["pagination"]["pages"]
-collection_items = []
-for i in range(1, no_pages + 1):
-    query = {'page': i, 'per_page': 100}
-    url_request = url_discogs_api + "/users/" + config["discogs_user"] + "/collection/folders/0/releases"
-    print(requests.get(url_request, params=query))
-    response = requests.get(url_request, params=query)
-    print(jsonResponse["releases"])
-    collection_items.append(jsonResponse["releases"])
+def retrieve_collection_items(name_discogs_user, url_discogs_api):
 
-print(len(collection_items))
+    # Get first page to get the number of pages
+    try:
+        query = {'page': 1, 'per_page': 100}
+        url_request = url_discogs_api + "/users/" + name_discogs_user + "/collection/folders/0/releases"
+        response = requests.get(url_request, params=query)
+        response.raise_for_status()
+        jsonResponse = response.json()
+    except HTTPError as http_err:
+        print(f'HTTP error occurred: {http_err}')
+    except Exception as err:
+        print(f'Other error occurred: {err}')
 
-# Read sqlite query results into a pandas DataFrame
-#con = sqlite3.connect("~/Development/Datasets/discogs_value.sqlite")
-#df = pd.read_sql_query("SELECT * from collection_value", con)
+    no_pages = jsonResponse["pagination"]["pages"] # * 50
 
-# Verify that result of SQL query is stored in the dataframe
-#print(df.head())
+    # Retrieving all collection items
+    collection_items = []
+    for i in range(1, no_pages + 1):
+        try:
+            query = {'page': i, 'per_page': 100}
+            url_request = url_discogs_api + "/users/" + name_discogs_user + "/collection/folders/0/releases"
+            response = requests.get(url_request, params=query)
+            jsonResponse = response.json()
+            collection_items.append(pd.json_normalize(jsonResponse["releases"]))
+        except HTTPError as http_err:
+            print(f'HTTP error occurred: {http_err}')
+        except Exception as err:
+            print(f'Other error occurred: {err}')
 
-#con.close()
-# df = pd.read_json('https://api.coinmarketcap.com/v1/ticker/?limit=10')
-# r = json.requests.get('http://api.football-data.org/v1/competitions/398/teams')
-# x = r.json()
-# df = pd.read_json(json.dumps(x))
-# 
+    df_collection = pd.concat(collection_items, ignore_index=True)
+    return(df_collection)
+
+def store_collection_items(df_collection, db_file):
+
+    db = sqlite3.connect(db_file)
+    df_collection[["id", "instance_id", "date_added"]].to_sql(name="collection", con=db, if_exists='replace')
+    db.close()
+
+def retrieve_lowest_value(df_collection, url_discogs_api):
+
+    query = {'curr_abbr': 'EUR'}
+
+    collection_items_value = []
+    for i in df_collection.index:
+        url_request = url_discogs_api + "/marketplace/stats/" + str(df_collection['id'][i])
+        try:
+            response = requests.get(url_request, params=query)
+            response.raise_for_status()
+
+            df_item = pd.json_normalize(response.json())
+            df_item['id'] = str(df_collection['id'][i])
+            df_item['time_value_retrieved'] = dt.datetime.now()
+            df_item = df_item.loc[:, df_item.columns != 'lowest_price']
+            collection_items_value.append(df_item)
+
+        except HTTPError as http_err:
+            if response.status_code == 429:
+                time.sleep(60)
+        except Exception as err:
+            print(f'Other error occurred: {err}')
+            
+    df_collection_value = pd.concat(collection_items_value, ignore_index=True)
+    return(df_collection_value)
+
+def store_lowest_value(df_collection_value, db_file):
+
+    db = sqlite3.connect(db_file)
+    df_collection_value.to_sql(name="collection_value", con=db, if_exists='append')
+    db.close()
