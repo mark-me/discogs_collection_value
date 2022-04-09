@@ -1,10 +1,11 @@
-import pandas as pd
-import numpy as np
-import sqlite3
 import json
-import yaml
+import numpy as np
+import pandas as pd
 import requests
+import sqlite3
+import yaml
 from requests.exceptions import HTTPError
+import time
 
 with open(r'config.yaml') as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
