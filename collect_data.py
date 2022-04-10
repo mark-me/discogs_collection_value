@@ -52,12 +52,17 @@ def retrieve_collection_items(name_discogs_user, url_discogs_api):
             print(f'Other error occurred: {err}')
 
     df_collection = pd.concat(collection_items, ignore_index=True)
+   
+    selected_columns = df_collection.columns[~df_collection.columns.isin([ "basic_information.thumb", "basic_information.cover_image",\
+     "basic_information.artists", "basic_information.labels", "basic_information.formats", "basic_information.genres", "basic_information.styles"])]
+    df_collection = df_collection[selected_columns]
+
     return(df_collection)
 
 def store_collection_items(df_collection, db_file):
 
     db = sqlite3.connect(db_file)
-    df_collection[["id", "instance_id", "date_added"]].to_sql(name="collection", con=db, if_exists='replace')
+    df_collection.to_sql(name="collection", con=db, if_exists='replace')
     db.close()
 
 def retrieve_lowest_value(df_collection, url_discogs_api):
