@@ -13,8 +13,9 @@ def main():
     with open(r'config.yaml') as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
 
-    url_discogs_api = "https://api.discogs.com"
-    name_discogs_user = config["discogs_user"]
+    url_discogs_api = 'https://api.discogs.com'
+    name_discogs_user = config['discogs_user']
+    token_discogs = config['discogs_token']
     db_file = config["db_file"]
     df_collection = retrieve_collection_items(name_discogs_user, url_discogs_api)
     store_collection_items(df_collection, db_file)
